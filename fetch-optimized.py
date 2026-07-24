@@ -7,7 +7,6 @@ import time
 import json
 import re
 import shutil
-import subprocess
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -64,9 +63,19 @@ def make_driver(chromedriver_path):
     driver.set_page_load_timeout(int(os.getenv("STARTUP_TIMEOUT", "30")))
     return driver
 
+def close_ad_tabs(driver, original_window):
+    """Closes any pop-ups/pop-unders opened by aggressive ad clickjacking."""
+    for window_handle in driver.window_handles:
+        if window_handle != original_window:
+            print(f"{now()}   -> 🚫 Closing pop-up ad tab...")
+            driver.switch_to.window(window_handle)
+            driver.close()
+    driver.switch_to.window(original_window)
+
 def attempt_play_click(driver):
-    """Robust 3-step sequence to bypass covers, ad-overlays, and iframes."""
+    """Robust sequence to bypass covers, ad-overlays, and iframes, closing popups along the way."""
     print(f"{now()} 🖱️ Starting robust play-click sequence...")
+    original_window = driver.current_window_handle
 
     # STEP 1: Click fake covers on the main page
     try:
@@ -88,6 +97,7 @@ def attempt_play_click(driver):
         if main_clicks > 0:
             print(f"{now()}   -> Clicked {main_clicks} cover/play element(s) on main page. Waiting for iframe...")
             time.sleep(2.0)
+            close_ad_tabs(driver, original_window)
     except Exception as e:
         print(f"{now()}   -> Warning on main page JS click: {e}")
 
@@ -102,9 +112,8 @@ def attempt_play_click(driver):
 
         for idx, el in enumerate(target_elements):
             try:
-                # VERY IMPORTANT: Skip invisible or 0x0 sized tracking iframes
-                if not el.is_displayed() or el.size['width'] == 0 or el.size['height'] == 0:
-                    print(f"{now()}   -> Skipping element #{idx+1} (Hidden or 0x0 size)")
+                # Skip invisible or 0x0 sized tracking iframes
+                if not el.is_displayed() or el.size['width'] < 10 or el.size['height'] < 10:
                     continue
 
                 print(f"{now()}   -> Targeting {'iframe' if iframes else 'video'} #{idx+1} (Size: {el.size['width']}x{el.size['height']})...")
@@ -113,21 +122,27 @@ def attempt_play_click(driver):
                 driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
                 time.sleep(1)
 
-                # Use ActionChains to simulate a real OS mouse click on the center of the element
                 actions = ActionChains(driver)
                 
                 # Click 1: Absorbs the invisible ad-overlay
                 actions.move_to_element(el).click().perform()
-                time.sleep(0.5)
+                time.sleep(1.0)
+                close_ad_tabs(driver, original_window)
                 
-                # Click 2: Actually triggers the video
+                # Click 2: Actually triggers the video or loads real iframe content
                 actions.move_to_element(el).click().perform()
                 time.sleep(1.0)
+                close_ad_tabs(driver, original_window)
 
                 # STEP 3: If it's an iframe, dive into it and click internal player buttons
                 if el.tag_name == "iframe":
-                    print(f"{now()}   -> Switching into iframe to click internal play buttons...")
+                    print(f"{now()}   -> Switching into iframe to dump source and click internal play buttons...")
                     driver.switch_to.frame(el)
+                    
+                    # Dump iframe source for debugging
+                    with open(f"iframe_{idx+1}_source.html", "w", encoding="utf-8") as f:
+                        f.write(driver.page_source)
+                    print(f"{now()}   -> 💾 Saved iframe source to iframe_{idx+1}_source.html")
                     
                     js_iframe = """
                     var inner_selectors = ['.vjs-big-play-button', '.jw-icon-display', '.jw-state-idle', '.ytp-large-play-button', '.plyr__control--overlaid', 'video'];
@@ -145,18 +160,16 @@ def attempt_play_click(driver):
                     try:
                         inner_clicks = driver.execute_script(js_iframe)
                         print(f"{now()}   -> Clicked {inner_clicks} element(s) inside the iframe.")
-                    except Exception as e:
+                    except Exception:
                         pass
                     
-                    # IMPORTANT: Switch back to main page so the rest of the script works
+                    # Switch back to main page context
                     driver.switch_to.default_content()
 
             except Exception as inner_e:
-                print(f"{now()}   -> ⚠️ Error interacting with element #{idx+1}. Continuing to next element...")
-                # Extract the first line of the error message for cleaner logs
                 error_summary = str(inner_e).splitlines()[0] if str(inner_e) else "Unknown error"
-                print(f"{now()}   -> Exception detail: {error_summary}")
-                driver.switch_to.default_content() # Always ensure we are back in main context
+                print(f"{now()}   -> ⚠️ Error interacting with element #{idx+1}: {error_summary}")
+                driver.switch_to.default_content()
 
     except Exception as e:
         print(f"{now()}   -> ⚠️ Error during physical mouse/iframe clicking: {e}")
@@ -192,9 +205,14 @@ def main():
         # --- THE CLICK SEQUENCE ---
         attempt_play_click(driver)
         
-        # Take a screenshot for debugging on your phone
+        # Take a screenshot for debugging
         driver.save_screenshot("player_screenshot.png")
         print(f"{now()} 📸 Saved debug screenshot to player_screenshot.png")
+
+        # Save the main page HTML source for debugging
+        with open("main_page_source.html", "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+        print(f"{now()} 📸 Saved HTML to main_page_source.html")
 
         found = set()
         processed = set()

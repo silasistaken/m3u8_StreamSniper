@@ -201,9 +201,16 @@ def main():
         
         # Trigger play button interaction with scrolling
         attempt_play_click(driver)
-        
+        # Save screenshot for debugging on mobile
+        driver.save_screenshot("player_screenshot1.png")
+        print(f"{now()} 📸 Saved player screenshot to player_screenshot1.png")
+
         # give player an extra second to load stream source after clicking play
         time.sleep(1.5)
+
+        driver.save_screenshot("player_screenshot2.png")
+        print(f"{now()} 📸 Saved player screenshot to player_screenshot2.png")
+        
 
         found = set()
         processed = set()

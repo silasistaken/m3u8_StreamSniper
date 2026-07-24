@@ -77,7 +77,6 @@ jobs:
           name: debug-artifacts
           path: |
             fetch_stream_output.txt
-            player_screenshot1.png
-            player_screenshot2.png
+            player_screenshot.png
 
           

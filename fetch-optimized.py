@@ -51,7 +51,7 @@ def make_driver(chromedriver_path):
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1280,720") # Force consistent window size for ActionChains
+    options.add_argument("--window-size=1280,720") 
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-background-networking")
     options.add_argument("--no-first-run")
@@ -68,7 +68,7 @@ def attempt_play_click(driver):
     """Robust 3-step sequence to bypass covers, ad-overlays, and iframes."""
     print(f"{now()} 🖱️ Starting robust play-click sequence...")
 
-    # STEP 1: Click fake covers on the main page (123movies often requires this to load the iframe)
+    # STEP 1: Click fake covers on the main page
     try:
         js_main = """
         var selectors = ['.Tp-Poster', '.TPlayerPlay', '.play-video', '#play-now', '.play-btn', '.play', '#my-video'];
@@ -101,49 +101,62 @@ def attempt_play_click(driver):
             return
 
         for idx, el in enumerate(target_elements):
-            print(f"{now()}   -> Targeting {'iframe' if iframes else 'video'} #{idx+1}...")
-            
-            # Scroll element dead center
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-            time.sleep(1)
+            try:
+                # VERY IMPORTANT: Skip invisible or 0x0 sized tracking iframes
+                if not el.is_displayed() or el.size['width'] == 0 or el.size['height'] == 0:
+                    print(f"{now()}   -> Skipping element #{idx+1} (Hidden or 0x0 size)")
+                    continue
 
-            # Use ActionChains to simulate a real OS mouse click on the center of the element
-            actions = ActionChains(driver)
-            
-            # Click 1: Absorbs the invisible ad-overlay
-            actions.move_to_element(el).click().perform()
-            time.sleep(0.5)
-            
-            # Click 2: Actually triggers the video
-            actions.move_to_element(el).click().perform()
-            time.sleep(1.0)
+                print(f"{now()}   -> Targeting {'iframe' if iframes else 'video'} #{idx+1} (Size: {el.size['width']}x{el.size['height']})...")
+                
+                # Scroll element dead center
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+                time.sleep(1)
 
-            # STEP 3: If it's an iframe, dive into it and click internal player buttons
-            if el.tag_name == "iframe":
-                print(f"{now()}   -> Switching into iframe to click internal play buttons...")
-                driver.switch_to.frame(el)
+                # Use ActionChains to simulate a real OS mouse click on the center of the element
+                actions = ActionChains(driver)
                 
-                js_iframe = """
-                var inner_selectors = ['.vjs-big-play-button', '.jw-icon-display', '.jw-state-idle', '.ytp-large-play-button', '.plyr__control--overlaid', 'video'];
-                var clicked = 0;
-                for (var s of inner_selectors) {
-                    document.querySelectorAll(s).forEach(function(btn) {
-                        if (btn.offsetParent !== null) {
-                            btn.click();
-                            clicked++;
-                        }
-                    });
-                }
-                return clicked;
-                """
-                try:
-                    inner_clicks = driver.execute_script(js_iframe)
-                    print(f"{now()}   -> Clicked {inner_clicks} element(s) inside the iframe.")
-                except Exception as e:
-                    pass
+                # Click 1: Absorbs the invisible ad-overlay
+                actions.move_to_element(el).click().perform()
+                time.sleep(0.5)
                 
-                # IMPORTANT: Switch back to main page so the rest of the script works
-                driver.switch_to.default_content()
+                # Click 2: Actually triggers the video
+                actions.move_to_element(el).click().perform()
+                time.sleep(1.0)
+
+                # STEP 3: If it's an iframe, dive into it and click internal player buttons
+                if el.tag_name == "iframe":
+                    print(f"{now()}   -> Switching into iframe to click internal play buttons...")
+                    driver.switch_to.frame(el)
+                    
+                    js_iframe = """
+                    var inner_selectors = ['.vjs-big-play-button', '.jw-icon-display', '.jw-state-idle', '.ytp-large-play-button', '.plyr__control--overlaid', 'video'];
+                    var clicked = 0;
+                    for (var s of inner_selectors) {
+                        document.querySelectorAll(s).forEach(function(btn) {
+                            if (btn.offsetParent !== null) {
+                                btn.click();
+                                clicked++;
+                            }
+                        });
+                    }
+                    return clicked;
+                    """
+                    try:
+                        inner_clicks = driver.execute_script(js_iframe)
+                        print(f"{now()}   -> Clicked {inner_clicks} element(s) inside the iframe.")
+                    except Exception as e:
+                        pass
+                    
+                    # IMPORTANT: Switch back to main page so the rest of the script works
+                    driver.switch_to.default_content()
+
+            except Exception as inner_e:
+                print(f"{now()}   -> ⚠️ Error interacting with element #{idx+1}. Continuing to next element...")
+                # Extract the first line of the error message for cleaner logs
+                error_summary = str(inner_e).splitlines()[0] if str(inner_e) else "Unknown error"
+                print(f"{now()}   -> Exception detail: {error_summary}")
+                driver.switch_to.default_content() # Always ensure we are back in main context
 
     except Exception as e:
         print(f"{now()}   -> ⚠️ Error during physical mouse/iframe clicking: {e}")

@@ -68,7 +68,7 @@ jobs:
           echo -e "Running Selenium Script with TARGET_URL=${TARGET_URL} and MAX_WAIT_SECONDS=${MAX_WAIT_SECONDS}"
           # make sure script is executable if needed
           ls -l
-          python fetch_stream.py 2>&1 | tee fetch_stream_output.txt
+          python fetch_optimized.py 2>&1 | tee fetch_stream_output.txt
 
       - name: Upload run log as artifact
         uses: actions/upload-artifact@v4

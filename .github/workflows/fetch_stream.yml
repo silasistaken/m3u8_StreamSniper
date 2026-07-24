@@ -70,8 +70,14 @@ jobs:
           ls -l
           python fetch-optimized.py 2>&1 | tee fetch_stream_output.txt
 
-      - name: Upload run log as artifact
+      - name: Upload logs and screenshot as artifact
+        if: always() # Upload even if the script failed
         uses: actions/upload-artifact@v4
         with:
-          name: fetch-stream-log
-          path: fetch_stream_output.txt
+          name: debug-artifacts
+          path: |
+            fetch_stream_output.txt
+            player_screenshot1.png
+            player_screenshot2.png
+
+          

@@ -6,7 +6,7 @@ on:
       url:
         description: "The URL to scrape for m3u8 links (override default)"
         required: true
-        default: "https://news.abplive.com/live-tv"
+        default: "https://0123movies.run/movie/the-crow-salvation-2000-B9456Sy/play/#video-player"
       max_wait:
         description: "Max seconds the script should wait for m3u8 (optional)"
         required: false

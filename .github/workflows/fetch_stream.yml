@@ -78,5 +78,6 @@ jobs:
           path: |
             fetch_stream_output.txt
             player_screenshot.png
+            *.html
 
           
